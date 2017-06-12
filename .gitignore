@@ -43,3 +43,4 @@ master/buildbot/www/static/js/default/
 sandbox
 .idea/
 /.venv/
+master/buildbot/www/hooks/flubuild.py
