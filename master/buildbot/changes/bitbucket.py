@@ -100,75 +100,71 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
         return self._getPage(url)
 
     @defer.inlineCallbacks
-    def _processChanges(self, response):
-        page = yield readBody(response)
+    def _processChanges(self, page):
         result = json.loads(page, encoding=self.encoding)
+        if 'values' in result:
+            for pr in result['values']:
+                branch = pr['source']['branch']['name']
+                nr = int(pr['id'])
+                # Note that this is a short hash. The full length hash can be accessed via the
+                # commit api resource but we want to avoid requesting multiple pages as long as
+                # we are not sure that the pull request is new or updated.
+                revision = pr['source']['commit']['hash']
 
-        for pr in result['values']:
-            branch = pr['source']['branch']['name']
-            nr = int(pr['id'])
-            # Note that this is a short hash. The full length hash can be accessed via the
-            # commit api resource but we want to avoid requesting multiple pages as long as
-            # we are not sure that the pull request is new or updated.
-            revision = pr['source']['commit']['hash']
+                # check branch
+                if not self.branches or branch in self.branches:
+                    current = yield self._getCurrentRev(nr)
 
-            # check branch
-            if not self.branches or branch in self.branches:
-                current = yield self._getCurrentRev(nr)
+                    # compare _short_ hashes to check if the PR has been updated
+                    if not current or current[0:12] != revision[0:12]:
+                        # parse pull request api page (required for the filter)
+                        page = yield self._getPage(str(pr['links']['self']['href']))#.replace('!api', 'api'))
+                        pr_json = json.loads(page, encoding=self.encoding)
 
-                # compare _short_ hashes to check if the PR has been updated
-                if not current or current[0:12] != revision[0:12]:
-                    # parse pull request api page (required for the filter)
-                    response = yield self._getPage(str(pr['links']['self']['href']).replace('!api', 'api'))
-                    page = yield readBody(response)
-                    pr_json = json.loads(page, encoding=self.encoding)
+                        # filter pull requests by user function
+                        if not self.pullrequest_filter(pr_json):
+                            log.msg('pull request does not match filter')
+                            continue
 
-                    # filter pull requests by user function
-                    if not self.pullrequest_filter(pr_json):
-                        log.msg('pull request does not match filter')
-                        continue
+                        # access additional information
+                        author = pr['author']['display_name']
+                        prlink = pr['links']['html']['href']
+                        # Get time updated time. Note that the timezone offset is
+                        # ignored.
+                        if self.useTimestamps:
+                            updated = datetime.strptime(
+                                pr['updated_on'].split('.')[0],
+                                '%Y-%m-%dT%H:%M:%S')
+                        else:
+                            updated = epoch2datetime(reactor.seconds())
+                        title = pr['title']
+                        # parse commit api page
+                        page = yield self._getPage(str(pr['source']['commit']['links']['self']['href']))#.replace('!api', 'api'))
+                        commit_json = json.loads(page, encoding=self.encoding)
+                        # use the full-length hash from now on
+                        revision = commit_json['hash']
+                        revlink = commit_json['links']['html']['href']
+                        # parse repo api page
+                        page = yield self._getPage(str(pr['source']['repository']['links']['self']['href']))#.replace('!api', 'api'))
+                        repo_json = json.loads(page, encoding=self.encoding)
+                        repo = repo_json['links']['html']['href']
 
-                    # access additional information
-                    author = pr['author']['display_name']
-                    prlink = pr['links']['html']['href']
-                    # Get time updated time. Note that the timezone offset is
-                    # ignored.
-                    if self.useTimestamps:
-                        updated = datetime.strptime(
-                            pr['updated_on'].split('.')[0],
-                            '%Y-%m-%dT%H:%M:%S')
-                    else:
-                        updated = epoch2datetime(reactor.seconds())
-                    title = pr['title']
-                    # parse commit api page
-                    response = yield self._getPage(str(pr['source']['commit']['links']['self']['href']).replace('!api', 'api'))
-                    page = yield readBody(response)
-                    commit_json = json.loads(page, encoding=self.encoding)
-                    # use the full-length hash from now on
-                    revision = commit_json['hash']
-                    revlink = commit_json['links']['html']['href']
-                    # parse repo api page
-                    response = yield self._getPage(str(pr['source']['repository']['links']['self']['href']).replace('!api', 'api'))
-                    page = yield readBody(response)
-                    repo_json = json.loads(page, encoding=self.encoding)
-                    repo = repo_json['links']['html']['href']
-
-                    # update database
-                    yield self._setCurrentRev(nr, revision)
-                    # emit the change
-                    yield self.master.data.updates.addChange(
-                        author=ascii2unicode(author),
-                        revision=ascii2unicode(revision),
-                        revlink=ascii2unicode(revlink),
-                        comments=u'pull-request #%d: %s\n%s' % (
-                            nr, title, prlink),
-                        when_timestamp=datetime2epoch(updated),
-                        branch=ascii2unicode(branch),
-                        category=self.category,
-                        project=self.project,
-                        repository=ascii2unicode(repo),
-                        src=u'bitbucket',
-                    )
+                        # update database
+                        yield self._setCurrentRev(nr, revision)
+                        # emit the change
+                        yield self.master.data.updates.addChange(
+                            author=ascii2unicode(author),
+                            revision=ascii2unicode(revision),
+                            revlink=ascii2unicode(revlink),
+                            comments=u'pull-request #%d: %s\n%s' % (
+                                nr, title, prlink),
+                            when_timestamp=datetime2epoch(updated),
+                            branch=ascii2unicode(branch),
+                            category=self.category,
+                            project=self.project,
+                            repository=ascii2unicode(repo),
+                            src=u'bitbucket',
+                        )
 
     def _processChangesFailure(self, f):
         log.msg('BitbucketPullrequestPoller: json api poll failed')
@@ -208,6 +204,7 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
         return self.master.db.state.getObjectId(
             '%s/%s#%s' % (self.owner, self.slug, self.branches), self.db_class_name)
 
+    @defer.inlineCallbacks
     def _getPage(self, url):
         headers = None
         if self.app_password:
@@ -215,4 +212,9 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
             authorization = b64encode(user)
             headers = Headers({'Authorization': ['Basic ' + authorization]})
 
-        return self.agent.request('GET', url, headers, None)
+        response = yield self.agent.request('GET', url, headers, None)
+        page = yield self.readBody(response)
+        defer.returnValue(page)
+
+    def readBody(self, response):
+        return readBody(response)

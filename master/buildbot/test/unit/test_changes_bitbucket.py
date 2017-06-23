@@ -18,12 +18,15 @@ from __future__ import print_function
 
 import re
 from datetime import datetime
+from base64 import b64encode
 
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.trial import unittest
 from twisted.web import client
+from twisted.web._newclient import Response
 from twisted.web.error import Error
+from twisted.web.http_headers import Headers
 
 from buildbot.changes.bitbucket import BitbucketPullrequestPoller
 from buildbot.test.util import changesource
@@ -311,6 +314,18 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
     def tearDown(self):
         return self.tearDownChangeSource()
 
+    def _fakeRequest(self, result):
+        # Install a fake getPage that puts the requested URL in self.getPage_got_url
+        # the requested headers in self.request_got_headers
+        # and return result
+        self.request_got_headers = None
+        self.getPage_got_url = None
+        def fake(method, url, headers, arg):
+            self.getPage_got_url = url
+            self.request_got_headers = headers
+            return defer.succeed(result)
+        self.patch(self.changesource.agent, "request", fake)
+
     def _fakeGetPage(self, result):
         # Install a fake getPage that puts the requested URL in self.getPage_got_url
         # and return result
@@ -319,13 +334,13 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
         def fake(url, timeout=None):
             self.getPage_got_url = url
             return defer.succeed(result)
-        self.patch(client, "getPage", fake)
+        self.patch(self.changesource, "_getPage", fake)
 
     def _fakeGetPage404(self):
 
         def fail(url, timeout=None):
             raise Error(code=404)
-        self.patch(client, "getPage", fail)
+        self.patch(self.changesource, "_getPage", fail)
 
     def attachDefaultChangeSource(self):
         return self.attachChangeSource(BitbucketPullrequestPoller(
@@ -363,13 +378,13 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
     def test_poll_new_pull_requests(self):
         yield self.attachDefaultChangeSource()
         # patch client.getPage()
-        self.patch(client, "getPage", self.pr_list.getPage)
+        self.patch(self.changesource, "_getPage", self.pr_list.getPage)
 
         yield self.changesource.poll()
 
         self.assertEqual(self.master.data.updates.changesAdded, [{
             'author': u'contributor',
-            'branch': None,
+            'branch': u'default',
             'category': None,
             'codebase': None,
             'comments': u'pull-request #1: title\nhttps://bitbucket.org/owner/slug/pull-request/1',
@@ -388,13 +403,13 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
         yield self.attachDefaultChangeSource()
 
         # patch client.getPage()
-        self.patch(client, "getPage", self.pr_list.getPage)
+        self.patch(self.changesource, "_getPage", self.pr_list.getPage)
 
         yield self.changesource.poll()
 
         self.assertEqual(self.master.data.updates.changesAdded, [{
             'author': u'contributor',
-            'branch': None,
+            'branch': u'default',
             'category': None,
             'codebase': None,
             'comments': u'pull-request #1: title\nhttps://bitbucket.org/owner/slug/pull-request/1',
@@ -416,13 +431,13 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
     def test_poll_updated_pull_request(self):
         yield self.attachDefaultChangeSource()
         # patch client.getPage()
-        self.patch(client, "getPage", self.pr_list.getPage)
+        self.patch(self.changesource, "_getPage", self.pr_list.getPage)
 
         yield self.changesource.poll()
 
         self.assertEqual(self.master.data.updates.changesAdded, [{
             'author': u'contributor',
-            'branch': None,
+            'branch': u'default',
             'category': None,
             'codebase': None,
             'comments': u'pull-request #1: title\nhttps://bitbucket.org/owner/slug/pull-request/1',
@@ -436,13 +451,13 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
             'src': u'bitbucket',
             'when_timestamp': 1381869500,
         }])
-        self.patch(client, "getPage", self.pr_list2.getPage)
+        self.patch(self.changesource, "_getPage", self.pr_list2.getPage)
         yield self.changesource.poll()
 
         self.assertEqual(self.master.data.updates.changesAdded, [
             {
                 'author': u'contributor',
-                'branch': None,
+                'branch': u'default',
                 'category': None,
                 'codebase': None,
                 'comments': u'pull-request #1: title\nhttps://bitbucket.org/owner/slug/pull-request/1',
@@ -457,7 +472,7 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
             },
             {
                 'author': u'contributor',
-                'branch': None,
+                'branch': u'default',
                 'category': None,
                 'codebase': None,
                 'comments': u'pull-request #1: title\nhttps://bitbucket.org/owner/slug/pull-request/1',
@@ -481,7 +496,7 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
         ))
 
         # patch client.getPage()
-        self.patch(client, "getPage", self.pr_list.getPage)
+        self.patch(self.changesource, "_getPage", self.pr_list.getPage)
 
         yield self.changesource.poll()
 
@@ -496,13 +511,13 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
         ))
 
         # patch client.getPage()
-        self.patch(client, "getPage", self.pr_list.getPage)
+        self.patch(self.changesource, "_getPage", self.pr_list.getPage)
 
         yield self.changesource.poll()
 
         self.assertEqual(self.master.data.updates.changesAdded, [{
             'author': u'contributor',
-            'branch': None,
+            'branch': u'default',
             'category': None,
             'codebase': None,
             'comments': u'pull-request #1: title\nhttps://bitbucket.org/owner/slug/pull-request/1',
@@ -525,13 +540,13 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
         ))
 
         # patch client.getPage()
-        self.patch(client, "getPage", self.pr_list.getPage)
+        self.patch(self.changesource, "_getPage", self.pr_list.getPage)
         self.patch(reactor, "seconds", lambda: 1396825656)
 
         yield self.changesource.poll()
         self.assertEqual(self.master.data.updates.changesAdded, [{
             'author': u'contributor',
-            'branch': None,
+            'branch': u'default',
             'category': None,
             'codebase': None,
             'comments': u'pull-request #1: title\nhttps://bitbucket.org/owner/slug/pull-request/1',
@@ -544,3 +559,42 @@ class TestBitbucketPullrequestPoller(changesource.ChangeSourceMixin, unittest.Te
             'src': u'bitbucket',
             'when_timestamp': 1396825656,
         }])
+
+    @defer.inlineCallbacks
+    def test_poll_pull_request_authenticated(self):
+        username = 'username'
+        app_password = 'password'
+        yield self.attachChangeSource(BitbucketPullrequestPoller(
+            owner='owner',
+            slug='slug',
+            username=username,
+            app_password=app_password,
+        ))
+
+        authorization = b64encode("%s:%s" % (username, app_password))
+        expected_headers = Headers({'Authorization': ['Basic ' + authorization]})
+        self._fakeRequest(Response((b'HTTP', 1, 1), 200, "OK", None, None))
+        self.patch(self.changesource, 'readBody', lambda x:'{}')
+        try:
+            yield self.changesource.poll()
+        except AttributeError:
+            pass
+        self.assertEqual(expected_headers, self.request_got_headers)
+
+    @defer.inlineCallbacks
+    def test_poll_pull_request_not_authenticated(self):
+        username = 'username'
+        app_password = 'password'
+        yield self.attachChangeSource(BitbucketPullrequestPoller(
+            owner='owner',
+            slug='slug',
+        ))
+
+        expected_headers = None
+        self._fakeRequest(Response((b'HTTP', 1, 1), 200, "OK", None, None))
+        self.patch(self.changesource, 'readBody', lambda x:'{}')
+        try:
+            yield self.changesource.poll()
+        except AttributeError:
+            pass
+        self.assertEqual(expected_headers, self.request_got_headers)
