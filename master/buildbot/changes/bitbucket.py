@@ -40,7 +40,7 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
     compare_attrs = ("owner", "slug", "branches",
                      "pollInterval", "useTimestamps",
                      "category", "project", "pollAtLaunch",
-                     "username", "app_password")
+                     "username", "app_password", "states")
 
     db_class_name = 'BitbucketPullrequestPoller'
 
@@ -55,6 +55,7 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
                  pollAtLaunch=False,
                  username=None,
                  app_password=None,
+                 states=None,
                  ):
         self.agent = Agent(reactor)
         self.owner = owner
@@ -62,6 +63,9 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
         self.branches = branches
         self.username = username
         self.app_password = app_password
+        if not states:
+            states = ['OPEN']
+        self.states = states
         base.PollingChangeSource.__init__(
             self, name='/'.join([owner, slug]), pollInterval=pollInterval, pollAtLaunch=pollAtLaunch)
         self.encoding = encoding
@@ -93,10 +97,11 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
 
     def _getChanges(self):
         self.lastPoll = time.time()
+        states = 'state=%s' % self.states[0] + ''.join('&state=' + s for s in self.states[1:])
         log.msg("BitbucketPullrequestPoller: polling "
                 "Bitbucket repository %s/%s, branches: %s" % (self.owner, self.slug, self.branches))
-        url = "https://bitbucket.org/api/2.0/repositories/%s/%s/pullrequests" % (
-            self.owner, self.slug)
+        url = "https://bitbucket.org/api/2.0/repositories/%s/%s/pullrequests?%s" % (
+            self.owner, self.slug, states)
         return self._getPage(url)
 
     @defer.inlineCallbacks

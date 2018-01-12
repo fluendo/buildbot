@@ -985,6 +985,10 @@ The :bb:chsrc:`BitbucketPullrequestPoller` accepts the following arguments:
     Give the new password a label, eg 'buildbot'.
     Give the consumer Pull requests:Read access at least.
 
+``states``
+    The states of the pull requests to query, it is an array that can be composed of OPEN, MERGED, DECLINED or SUPERSEDED
+    If it is ``None`` (the default) all OPEN pull requests are used.
+
 A minimal configuration for the Bitbucket pull request poller might look like this:
 
 .. code-block:: python
