@@ -106,6 +106,9 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
 
         for pr in result['values']:
             branch = pr['source']['branch']['name']
+            properties = {}
+            properties['merge_branch'] = pr['destination']['branch']['name']
+            properties['merge_revision'] = pr['destination']['commit']['hash']
             nr = int(pr['id'])
             # Note that this is a short hash. The full length hash can be accessed via the
             # commit api resource but we want to avoid requesting multiple pages as long as
@@ -168,6 +171,7 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
                         project=self.project,
                         repository=bytes2unicode(repo),
                         src=u'bitbucket',
+                        properties=properties,
                     )
 
     def _processChangesFailure(self, f):
