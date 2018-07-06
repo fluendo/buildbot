@@ -144,12 +144,16 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
                         updated = epoch2datetime(reactor.seconds())
                     title = pr['title']
                     # parse commit api page
-                    response = yield self._getPage(str(pr['source']['commit']['links']['self']['href']).replace('!api', 'api'))
+                    response = yield self._getPage(str(pr['links']['commits']['href']).replace('!api', 'api'))
                     page = yield readBody(response)
-                    commit_json = json.loads(page, encoding=self.encoding)
+                    commit_list_json = json.loads(page, encoding=self.encoding)
+
                     # use the full-length hash from now on
+                    commit_json = commit_list_json['values'][0]
                     revision = commit_json['hash']
                     revlink = commit_json['links']['html']['href']
+
+                    properties['commits'] = [cm['message'] for cm in commit_list_json['values']]
                     # parse repo api page
                     response = yield self._getPage(str(pr['source']['repository']['links']['self']['href']).replace('!api', 'api'))
                     page = yield readBody(response)
