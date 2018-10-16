@@ -97,11 +97,13 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
                 "Bitbucket repository %s/%s, branches: %s" % (self.owner, self.slug, self.branches))
         url = "https://bitbucket.org/api/2.0/repositories/%s/%s/pullrequests" % (
             self.owner, self.slug)
+        log.msg("Polling url : %s " % (url))
         return self._getPage(url)
 
     @defer.inlineCallbacks
     def _processChanges(self, response):
         page = yield readBody(response)
+        log.msg("readBody returns: %s" % (page)) 
         result = json.loads(page, encoding=self.encoding)
 
         for pr in result['values']:
@@ -222,5 +224,5 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
             user = "%s:%s" % (self.username, self.app_password)
             authorization = b64encode(user)
             headers = Headers({'Authorization': ['Basic ' + authorization]})
-
+            log.msg("Headers: %s" % (headers))
         return self.agent.request('GET', url, headers, None)
