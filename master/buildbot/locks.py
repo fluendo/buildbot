@@ -26,7 +26,7 @@ from buildbot.worker_transition import WorkerAPICompatMixin
 from buildbot.worker_transition import deprecatedWorkerModuleAttribute
 from buildbot.worker_transition import reportDeprecatedWorkerNameUsage
 
-if False:  # for debugging  pylint: disable=using-constant-test
+if True:  # for debugging
     debuglog = log.msg
 else:
     debuglog = lambda m: None
