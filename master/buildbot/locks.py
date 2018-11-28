@@ -85,7 +85,7 @@ class BaseLock:
 
         # Find all waiters ahead of the requester in the wait queue
         for idx, waiter in enumerate(self.waiting):
-            if waiter[0] == requester:
+            if waiter[0] is requester:
                 w_index = idx
                 break
         else:
@@ -96,9 +96,9 @@ class BaseLock:
             # Wants counting access
             return num_excl == 0 and num_counting + len(ahead) < self.maxCount \
                 and all([w[1].mode == 'counting' for w in ahead])
-        else:
-            # Wants exclusive access
-            return num_excl == 0 and num_counting == 0 and len(ahead) == 0
+        else
+            #Wants exclusive access
+            return num_excl == 0 and num_counting == 0 and not ahead
 
     def claim(self, owner, access):
         """ Claim the lock (lock must be available) """
@@ -108,7 +108,7 @@ class BaseLock:
 
         assert isinstance(access, LockAccess)
         assert access.mode in ['counting', 'exclusive']
-        self.waiting = [w for w in self.waiting if w[0] != owner]
+        self.waiting = [w for w in self.waiting if w[0] is not owner]
         self.owners.append((owner, access))
         debuglog(" %s is claimed '%s'" % (self, access.mode))
 
@@ -168,7 +168,7 @@ class BaseLock:
         d = defer.Deferred()
 
         # Are we already in the wait queue?
-        w = [i for i, w in enumerate(self.waiting) if w[0] == owner]
+        w = [i for i, w in enumerate(self.waiting) if w[0] is owner]
         if w:
             self.waiting[w[0]] = (owner, access, d)
         else:
@@ -179,7 +179,7 @@ class BaseLock:
         debuglog("%s stopWaitingUntilAvailable(%s)" % (self, owner))
         assert isinstance(access, LockAccess)
         assert (owner, access, d) in self.waiting
-        self.waiting = [w for w in self.waiting if w[0] != owner]
+        self.waiting = [w for w in self.waiting if w[0] is not owner]
 
     def isOwner(self, owner, access):
         return (owner, access) in self.owners
