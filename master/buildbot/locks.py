@@ -96,7 +96,7 @@ class BaseLock:
             # Wants counting access
             return num_excl == 0 and num_counting + len(ahead) < self.maxCount \
                 and all([w[1].mode == 'counting' for w in ahead])
-        else
+        else:
             #Wants exclusive access
             return num_excl == 0 and num_counting == 0 and not ahead
 
